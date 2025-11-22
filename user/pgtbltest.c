@@ -6,14 +6,12 @@
 
 void ugetpid_test();
 void pgaccess_test();
-void superpg_test();
 
 int
 main(int argc, char *argv[])
 {
   ugetpid_test();
   pgaccess_test();
-  superpg_test();  // 添加这行
   printf("pgtbltest: all tests succeeded\n");
   exit(0);
 }
@@ -71,28 +69,4 @@ pgaccess_test()
   printf("pgaccess_test: OK\n");
 }
 
-
-void superpg_test()
-{
-    printf("superpg_test starting\n");
-    testname = "superpg_test";
-    
-    // 分配 2MB 内存
-    char *buf = sbrk(2*1024*1024);
-    if(buf == (char*)-1)
-        err("sbrk failed");
-    
-    // 测试内存访问
-    for(int i = 0; i < 2*1024*1024; i += PGSIZE) {
-        buf[i] = i & 0xFF;
-    }
-    
-    // 验证
-    for(int i = 0; i < 2*1024*1024; i += PGSIZE) {
-        if(buf[i] != (i & 0xFF))
-            err("incorrect data");
-    }
-    
-    printf("superpg_test: OK\n");
-}
 

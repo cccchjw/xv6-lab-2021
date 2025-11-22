@@ -137,6 +137,12 @@ found:
     return 0;
   }
 
+    if((p->usyscall = (struct usyscall *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  p->usyscall->pid = p->pid;  // 初始化 PID
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -163,6 +169,13 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  
+  // +++ 新增：释放 usyscall 页面 +++
+  if(p->usyscall)
+    kfree((void*)p->usyscall);
+  p->usyscall = 0;
+  // +++ 新增结束 +++
+  
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -175,7 +188,6 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
 }
-
 // Create a user page table for a given process,
 // with no user memory, but with trampoline pages.
 pagetable_t
@@ -188,17 +200,14 @@ proc_pagetable(struct proc *p)
   if(pagetable == 0)
     return 0;
 
-  // map the trampoline code (for system call return)
-  // at the highest user virtual address.
-  // only the supervisor uses it, on the way
-  // to/from user space, so not PTE_U.
+  // map the trampoline code
   if(mappages(pagetable, TRAMPOLINE, PGSIZE,
               (uint64)trampoline, PTE_R | PTE_X) < 0){
     uvmfree(pagetable, 0);
     return 0;
   }
 
-  // map the trapframe just below TRAMPOLINE, for trampoline.S.
+  // map the trapframe
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
@@ -206,30 +215,15 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
-  // +++ 新增：映射 USYSCALL 页面 +++
-  // 分配物理页面用于存储 usyscall 结构
-  struct usyscall *usyscall_page = (struct usyscall *)kalloc();
-  if(usyscall_page == 0) {
+  // +++ 修正：使用 proc 中的 usyscall，不再重新分配 +++
+  if(mappages(pagetable, USYSCALL, PGSIZE,
+              (uint64)(p->usyscall), PTE_R | PTE_U) < 0){
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
     uvmunmap(pagetable, TRAPFRAME, 1, 0);
     uvmfree(pagetable, 0);
     return 0;
   }
-  
-  // 初始化 usyscall 结构，存储 PID
-  usyscall_page->pid = p->pid;
-  
-  // 将 USYSCALL 虚拟地址映射到物理页面
-  // 权限设置为 PTE_R | PTE_U：用户可读，但不可写
-  if(mappages(pagetable, USYSCALL, PGSIZE, 
-              (uint64)usyscall_page, PTE_R | PTE_U) < 0) {
-    kfree(usyscall_page);  // 映射失败，释放物理内存
-    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-    uvmunmap(pagetable, TRAPFRAME, 1, 0);
-    uvmfree(pagetable, 0);
-    return 0;
-  }
-  // +++ 新增结束 +++
+  // +++ 修正结束 +++
 
   return pagetable;
 }
@@ -239,18 +233,9 @@ proc_pagetable(struct proc *p)
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
-  // +++ 新增：释放 USYSCALL 页面 +++
-  // 首先找到 USYSCALL 对应的物理地址
-  pte_t *pte = walk(pagetable, USYSCALL, 0);
-  if(pte != 0 && (*pte & PTE_V) != 0) {
-    uint64 pa = PTE2PA(*pte);
-    kfree((void*)pa);  // 释放物理内存
-  }
-  
-  // 解除 USYSCALL 的页表映射
+  // +++ 修正：只解除映射，不释放内存 +++
+  // 因为内存已经在 freeproc 中释放了
   uvmunmap(pagetable, USYSCALL, 1, 0);
-  // +++ 新增结束 +++
-  
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);

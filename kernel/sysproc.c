@@ -131,51 +131,44 @@ sys_kpgtbl(void)
 
 
 
-
 #ifdef LAB_PGTBL
-uint64
+int
 sys_pgaccess(void)
 {
-  // 获取参数
-  uint64 base;  // 起始虚拟地址
-  int len;      // 页面数量
-  uint64 user_buf; // 用户空间的结果缓冲区
+  // 解析参数
+  uint64 start_va;
+  int num_pages;
+  uint64 user_buf;
   
-  if(argaddr(0, &base) < 0 || 
-     argint(1, &len) < 0 || 
-     argaddr(2, &user_buf) < 0) {
+  if(argaddr(0, &start_va) < 0 ||
+     argint(1, &num_pages) < 0 ||
+     argaddr(2, &user_buf) < 0)
     return -1;
-  }
   
-  // 参数检查
-  if(len < 0 || len > 64) {  // 限制最大页面数
+  // 限制检查的页面数量
+  if(num_pages < 0 || num_pages > 64)
     return -1;
-  }
   
   struct proc *p = myproc();
-  pagetable_t pagetable = p->pagetable;
+  uint64 bitmask = 0;  // 使用 uint64 而不是 unsigned int
   
-  // 计算位掩码
-  unsigned int abits = 0;
-  
-  for(int i = 0; i < len; i++) {
-    uint64 va = base + i * PGSIZE;
-    pte_t *pte = walk(pagetable, va, 0);
+  // 检查每个页面
+  for(int i = 0; i < num_pages; i++){
+    uint64 va = start_va + i * PGSIZE;
+    pte_t *pte = walk(p->pagetable, va, 0);
     
-    if(pte && (*pte & PTE_V) && (*pte & PTE_U)) {
-      if(*pte & PTE_A) {
-        // 设置对应的位
-        abits |= (1 << i);
-        // 清除访问位
-        *pte &= ~PTE_A;
-      }
+    if(pte && (*pte & PTE_V) && (*pte & PTE_A)){
+      // 页面被访问过，设置对应的位
+      bitmask |= (1L << i);  // 使用 1L 确保64位
+      
+      // 清除访问位
+      //*pte &= ~PTE_A;
     }
   }
   
   // 将结果复制回用户空间
-  if(copyout(pagetable, user_buf, (char *)&abits, sizeof(abits)) < 0) {
+  if(copyout(p->pagetable, user_buf, (char *)&bitmask, sizeof(bitmask)) < 0)
     return -1;
-  }
   
   return 0;
 }
