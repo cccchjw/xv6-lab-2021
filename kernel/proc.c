@@ -56,6 +56,16 @@ procinit(void)
   }
 }
 
+uchar initcode[] = {
+  0x17, 0x05, 0x00, 0x00, 0x13, 0x05, 0x45, 0x02,
+  0x97, 0x05, 0x00, 0x00, 0x93, 0x85, 0x35, 0x02,
+  0x93, 0x08, 0x70, 0x00, 0x73, 0x00, 0x00, 0x00,
+  0x93, 0x08, 0x20, 0x00, 0x73, 0x00, 0x00, 0x00,
+  0xef, 0xf0, 0x9f, 0xff, 0x2f, 0x69, 0x6e, 0x69,
+  0x74, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00
+};
+
 // Must be called with interrupts disabled,
 // to prevent race with process being moved
 // to a different CPU.
@@ -196,6 +206,31 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
+  // +++ 新增：映射 USYSCALL 页面 +++
+  // 分配物理页面用于存储 usyscall 结构
+  struct usyscall *usyscall_page = (struct usyscall *)kalloc();
+  if(usyscall_page == 0) {
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmunmap(pagetable, TRAPFRAME, 1, 0);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+  
+  // 初始化 usyscall 结构，存储 PID
+  usyscall_page->pid = p->pid;
+  
+  // 将 USYSCALL 虚拟地址映射到物理页面
+  // 权限设置为 PTE_R | PTE_U：用户可读，但不可写
+  if(mappages(pagetable, USYSCALL, PGSIZE, 
+              (uint64)usyscall_page, PTE_R | PTE_U) < 0) {
+    kfree(usyscall_page);  // 映射失败，释放物理内存
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmunmap(pagetable, TRAPFRAME, 1, 0);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+  // +++ 新增结束 +++
+
   return pagetable;
 }
 
@@ -204,23 +239,22 @@ proc_pagetable(struct proc *p)
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
+  // +++ 新增：释放 USYSCALL 页面 +++
+  // 首先找到 USYSCALL 对应的物理地址
+  pte_t *pte = walk(pagetable, USYSCALL, 0);
+  if(pte != 0 && (*pte & PTE_V) != 0) {
+    uint64 pa = PTE2PA(*pte);
+    kfree((void*)pa);  // 释放物理内存
+  }
+  
+  // 解除 USYSCALL 的页表映射
+  uvmunmap(pagetable, USYSCALL, 1, 0);
+  // +++ 新增结束 +++
+  
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
 }
-
-// a user program that calls exec("/init")
-// od -t xC initcode
-uchar initcode[] = {
-  0x17, 0x05, 0x00, 0x00, 0x13, 0x05, 0x45, 0x02,
-  0x97, 0x05, 0x00, 0x00, 0x93, 0x85, 0x35, 0x02,
-  0x93, 0x08, 0x70, 0x00, 0x73, 0x00, 0x00, 0x00,
-  0x93, 0x08, 0x20, 0x00, 0x73, 0x00, 0x00, 0x00,
-  0xef, 0xf0, 0x9f, 0xff, 0x2f, 0x69, 0x6e, 0x69,
-  0x74, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00
-};
-
 // Set up first user process.
 void
 userinit(void)
@@ -257,6 +291,20 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    // 检查是否可以使用超级页
+    if(n >= 2*1024*1024 && (sz % (2*1024*1024) == 0)) {
+      void *pa = superalloc();
+      if(pa != 0) {
+        if(mappages(p->pagetable, sz, 2*1024*1024, (uint64)pa, PTE_W|PTE_R|PTE_U) == 0) {
+          p->sz = sz + 2*1024*1024;
+          return 0;
+        } else {
+          superfree(pa);
+        }
+      }
+    }
+    
+    // 回退到普通分配
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }

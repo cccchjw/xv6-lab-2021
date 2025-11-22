@@ -188,6 +188,10 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
+	$U/_pgtbltest\
+	$U/_ugetpid \
+	$U/_print_kpgtbl
+
 
 
 

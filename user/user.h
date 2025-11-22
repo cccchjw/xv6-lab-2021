@@ -50,3 +50,7 @@ int atoi(const char*);
 int memcmp(const void *, const void *, uint);
 void *memcpy(void *, const void *, uint);
 int statistics(void*, int);
+
+int ugetpid(void);
+int kpgtbl(void);
+int pgaccess(void *base, int len, void *buf);

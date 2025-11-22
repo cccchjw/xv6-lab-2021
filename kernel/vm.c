@@ -168,16 +168,23 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   uint64 a;
   pte_t *pte;
 
-  if((va % PGSIZE) != 0)
-    panic("uvmunmap: not aligned");
-
-  for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
+  for(a = va; a < va + npages * PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0)
       panic("uvmunmap: not mapped");
-    if(PTE_FLAGS(*pte) == PTE_V)
-      panic("uvmunmap: not a leaf");
+    
+    // 检查是否是超级页
+    if(do_free && (a % (2*1024*1024) == 0) && (*pte & PTE_R)) {
+      uint64 pa = PTE2PA(*pte);
+      if(pa % (2*1024*1024) == 0) {
+        // 这是超级页，释放整个 2MB
+        superfree((void*)pa);
+        a += 2*1024*1024 - PGSIZE; // 跳过超级页范围
+        continue;
+      }
+    }
+    
     if(do_free){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
@@ -303,15 +310,34 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  char *mem;  // 添加这行声明
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+    
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
+    
+    // 检查是否是超级页的一部分
+    if((flags & PTE_R) && (i % (2*1024*1024) == 0) && (sz - i >= 2*1024*1024)) {
+      // 尝试使用超级页
+      void *superpa = superalloc();
+      if(superpa) {
+        // 复制物理内存
+        memmove(superpa, (char*)pa, 2*1024*1024);
+        if(mappages(new, i, 2*1024*1024, (uint64)superpa, flags) != 0){
+          superfree(superpa);
+          goto err;
+        }
+        i += 2*1024*1024 - PGSIZE; // 跳过超级页范围
+        continue;
+      }
+    }
+    
+    // 普通页面复制
     if((mem = kalloc()) == 0)
       goto err;
     memmove(mem, (char*)pa, PGSIZE);
@@ -326,7 +352,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
-
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
 void
@@ -431,4 +456,37 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+
+// 辅助递归函数
+static void
+vmprint_recursive(pagetable_t pagetable, int level)
+{
+  // 遍历所有 512 个 PTE
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      // 打印缩进
+      for(int j = 0; j < level; j++){
+        printf(" ..");
+      }
+      
+      uint64 pa = PTE2PA(pte);
+      printf("%d: pte %p pa %p\n", i, pte, pa);
+      
+      // 如果这不是叶子节点（没有 R/W/X 权限），递归打印下一级
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        vmprint_recursive((pagetable_t)pa, level + 1);
+      }
+    }
+  }
+}
+
+// 主要的 vmprint 函数
+void
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", pagetable);
+  vmprint_recursive(pagetable, 1);  // 从深度1开始
 }

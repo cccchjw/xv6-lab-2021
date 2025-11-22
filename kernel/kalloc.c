@@ -80,3 +80,87 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+
+// 分配 2MB 对齐的物理内存
+void*
+superalloc(void)
+{
+  acquire(&kmem.lock);
+  
+  // 寻找 2MB 对齐的连续 2MB 内存块
+  struct run *p;
+  for(p = kmem.freelist; p; p = p->next) {
+    // 检查是否 2MB 对齐
+    if((uint64)p % (2*1024*1024) == 0) {
+      // 检查是否有足够的连续页面
+      int found = 1;
+      struct run *current = p;
+      for(int i = 0; i < 512; i++) { // 2MB = 512 * 4KB
+        if(!current || (uint64)current % PGSIZE != 0) {
+          found = 0;
+          break;
+        }
+        current = current->next;
+      }
+      
+      if(found) {
+        // 从空闲列表中移除这些页面
+        struct run *result = p;
+        struct run *prev = 0;
+        current = kmem.freelist;
+        
+        // 找到 p 在链表中的前一个节点
+        while(current && current != p) {
+          prev = current;
+          current = current->next;
+        }
+        
+        // 从链表中移除 512 个页面
+        if(prev) {
+          prev->next = current;
+          for(int i = 0; i < 512 && current; i++) {
+            current = current->next;
+          }
+          prev->next = current;
+        } else {
+          // p 是链表头
+          kmem.freelist = current;
+          for(int i = 0; i < 512 && kmem.freelist; i++) {
+            kmem.freelist = kmem.freelist->next;
+          }
+        }
+        
+        release(&kmem.lock);
+        return (void*)result;
+      }
+    }
+  }
+  
+  release(&kmem.lock);
+  return 0;
+}
+
+// 释放超级页
+void
+superfree(void *pa)
+{
+  if((uint64)pa % (2*1024*1024) != 0)
+    panic("superfree: not 2MB aligned");
+  
+  acquire(&kmem.lock);
+  
+  // 将 512 个页面添加回空闲列表
+  struct run *first = (struct run*)pa;
+  struct run *current = first;
+  
+  for(int i = 1; i < 512; i++) {
+    struct run *next = (struct run*)((char*)pa + i * PGSIZE);
+    current->next = next;
+    current = next;
+  }
+  current->next = kmem.freelist;
+  kmem.freelist = first;
+  
+  release(&kmem.lock);
+}
