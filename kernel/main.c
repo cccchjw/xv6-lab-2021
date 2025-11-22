@@ -13,9 +13,15 @@ main()
   if(cpuid() == 0){
     consoleinit();
     printfinit();
-    printf("\n");
-    printf("xv6 kernel is booting\n");
-    printf("\n");
+    
+    // 移除原来的启动信息，替换为自定义启动界面
+    // printf("\n");
+    // printf("xv6 kernel is booting\n");
+    // printf("\n");
+    
+    // 显示自定义启动界面
+    show_boot_splash();
+    
     kinit();         // physical page allocator
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging

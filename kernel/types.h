@@ -8,3 +8,6 @@ typedef unsigned int  uint32;
 typedef unsigned long uint64;
 
 typedef uint64 pde_t;
+
+// 页表相关类型定义
+typedef uint64 *pagetable_t;  // 512 PTEs

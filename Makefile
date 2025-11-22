@@ -13,6 +13,7 @@ OBJS = \
   $K/kalloc.o \
   $K/string.o \
   $K/main.o \
+  $K/bootsplash.o \
   $K/vm.o \
   $K/proc.o \
   $K/swtch.o \
@@ -193,8 +194,14 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
-
-
+	$U/_sleep\
+	$U/_pingpong\
+	$U/_find\
+	$U/_xargs\
+	$U/_primes\
+	$U/_trace\
+	$U/_sysinfotest\
+	$U/_help\
 
 
 ifeq ($(LAB),$(filter $(LAB), pgtbl lock))

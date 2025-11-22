@@ -80,3 +80,43 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+
+uint64
+kget_avl_mem(void) {
+    acquire(&kmem.lock);
+    uint64 available_bytes = 0;
+    struct run *r = kmem.freelist;
+    while (r) {
+        available_bytes += PGSIZE;
+        r = r->next;
+    }
+    release(&kmem.lock);
+    return available_bytes;
+}
+
+
+// Return the number of bytes of free memory
+uint64
+free_mem(void)
+{
+  struct run *r;
+  // counting the number of free page
+  uint64 num = 0;
+  // add lock
+  acquire(&kmem.lock);
+  // r points to freelist
+  r = kmem.freelist;
+  // while r not null
+  while (r)
+  {
+    // the num add one
+    num++;
+    // r points to the next
+    r = r->next;
+  }
+  // release lock
+  release(&kmem.lock);
+  // page multiplicated 4096-byte page
+  return num * PGSIZE;
+}

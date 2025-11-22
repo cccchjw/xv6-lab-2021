@@ -9,6 +9,9 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+#include "types.h"
+#include "param.h"
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -63,6 +66,8 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+uint64           kget_avl_mem(void); 
+uint64          free_mem(void);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -104,6 +109,9 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+uint64   cur_proc_cnt(void);
+uint64          nproc(void);
+
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -170,6 +178,7 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+//pte_t *          walk(pagetable_t, uint64, int);
 
 // plic.c
 void            plicinit(void);
@@ -184,3 +193,10 @@ void            virtio_disk_intr(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+// bootsplash.c
+void print_logo(void);
+void print_welcome_banner(void);
+void print_system_info(void);
+void print_boot_progress(void);
+void show_boot_splash(void);

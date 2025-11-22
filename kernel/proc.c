@@ -6,6 +6,8 @@
 #include "proc.h"
 #include "defs.h"
 
+
+pte_t *walk(pagetable_t pagetable, uint64 va, int alloc);
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -140,7 +142,7 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
-
+  p->systrace = 0;
   return p;
 }
 
@@ -164,6 +166,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->systrace = 0;
 }
 
 // Create a user page table for a given process,
@@ -196,6 +199,29 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
+   // 分配物理页面用于存储usyscall结构
+  struct usyscall *usyscall_page = (struct usyscall *)kalloc();
+  if(usyscall_page == 0) {
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmunmap(pagetable, TRAPFRAME, 1, 0);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+  
+  // 初始化usyscall结构，存储PID
+  usyscall_page->pid = p->pid;
+  
+  // 将USYSCALL虚拟地址映射到物理页面
+  // 权限设置为PTE_R | PTE_U：用户可读，但不可写
+  if(mappages(pagetable, USYSCALL, PGSIZE, 
+              (uint64)usyscall_page, PTE_R | PTE_U) < 0) {
+    kfree(usyscall_page);  // 映射失败，释放物理内存
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmunmap(pagetable, TRAPFRAME, 1, 0);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+
   return pagetable;
 }
 
@@ -204,6 +230,15 @@ proc_pagetable(struct proc *p)
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
+    // 首先找到USYSCALL对应的物理地址
+  pte_t *pte = walk(pagetable, USYSCALL, 0);
+  if(pte != 0 && (*pte & PTE_V) != 0) {
+    uint64 pa = PTE2PA(*pte);
+    kfree((void*)pa);  // 释放物理内存
+  }
+  
+  // 解除USYSCALL的页表映射
+  uvmunmap(pagetable, USYSCALL, 1, 0);
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
@@ -305,6 +340,7 @@ fork(void)
 
   pid = np->pid;
 
+  np->systrace = p->systrace; 
   release(&np->lock);
 
   acquire(&wait_lock);
@@ -653,4 +689,40 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+
+uint64
+cur_proc_cnt(void) {
+    struct proc *p;
+    uint64 proc_cnt = 0;
+    for (p = proc; p < &proc[NPROC]; p++) {
+        proc_cnt += p->state != UNUSED ? 1 : 0;
+    }
+    return proc_cnt;
+}
+
+
+// Return the number of processes whose state is not UNUSED
+uint64
+nproc(void)
+{
+  struct proc *p;
+  // counting the number of processes
+  uint64 num = 0;
+  // traverse all processes
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    // add lock
+    acquire(&p->lock);
+    // if the processes's state is not UNUSED
+    if (p->state != UNUSED)
+    {
+      // the num add one
+      num++;
+    }
+    // release lock
+    release(&p->lock);
+  }
+  return num;
 }
