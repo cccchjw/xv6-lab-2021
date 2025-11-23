@@ -121,6 +121,7 @@ panic(char *s)
   printf("panic: ");
   printf(s);
   printf("\n");
+  backtrace();
   panicked = 1; // freeze uart output from other CPUs
   for(;;)
     ;
@@ -131,4 +132,28 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+
+void
+backtrace(void)
+{
+  printf("backtrace:\n");
+  
+  uint64 fp = r_fp();
+  uint64 top = PGROUNDUP(fp);
+  uint64 bottom = PGROUNDDOWN(fp);
+  
+  while (fp < top && fp > bottom) {
+    // 返回地址在fp-8的位置
+    uint64 ra = *(uint64*)(fp - 8);
+    printf("%p\n", ra);
+    
+    // 前一个帧指针在fp-16的位置
+    uint64 prev_fp = *(uint64*)(fp - 16);
+    if (prev_fp <= fp) {
+      break;  // 无效的帧指针
+    }
+    fp = prev_fp;
+  }
 }

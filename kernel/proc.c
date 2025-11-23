@@ -141,6 +141,13 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // 初始化alarm字段 - 确保alarm_trapframe初始化为0
+  p->alarm_interval = 0;
+  p->alarm_handler = 0;
+  p->alarm_ticks = 0;
+  p->alarm_going_off = 0;
+  p->alarm_trapframe = 0;
+
   return p;
 }
 
@@ -153,19 +160,29 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  
+  // 释放 alarm_trapframe
+  if(p->alarm_trapframe)
+    kfree((void*)p->alarm_trapframe);
+  p->alarm_trapframe = 0;  
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
-  p->name[0] = 0;
+  memset(p->name, 0, sizeof(p->name));
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  
+  // 重置 alarm 相关字段
+  p->alarm_interval = 0;
+  p->alarm_handler = 0;
+  p->alarm_ticks = 0;
+  p->alarm_going_off = 0;
 }
-
 // Create a user page table for a given process,
 // with no user memory, but with trampoline pages.
 pagetable_t
@@ -294,6 +311,23 @@ fork(void)
 
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
+
+    // Copy alarm state
+  np->alarm_interval = p->alarm_interval;
+  np->alarm_handler = p->alarm_handler;
+  np->alarm_ticks = p->alarm_ticks;
+  np->alarm_going_off = 0;  // 子进程重置alarm_going_off
+  np->alarm_trapframe = 0;
+  
+  // 如果父进程有alarm_trapframe，为子进程分配并复制
+  if(p->alarm_trapframe) {
+    if((np->alarm_trapframe = kalloc()) == 0){
+      freeproc(np);
+      release(&np->lock);
+      return -1;
+    }
+    memmove(np->alarm_trapframe, p->alarm_trapframe, sizeof(struct trapframe));
+  }
 
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)

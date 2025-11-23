@@ -105,4 +105,9 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int alarm_interval;          // 报警间隔
+  void (*alarm_handler)();     // 报警处理函数  
+  int alarm_ticks;             // 距离下一次报警的ticks
+  int alarm_going_off;         // 是否正在处理报警（防止重入）
+  struct trapframe *alarm_trapframe;  // 保存的陷阱帧
 };

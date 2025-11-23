@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 
+
 struct spinlock tickslock;
 uint ticks;
 
@@ -41,29 +42,17 @@ usertrap(void)
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
-  // send interrupts and exceptions to kerneltrap(),
-  // since we're now in the kernel.
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
   
-  // save user program counter.
   p->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
-    // system call
-
     if(p->killed)
       exit(-1);
-
-    // sepc points to the ecall instruction,
-    // but we want to return to the next instruction.
     p->trapframe->epc += 4;
-
-    // an interrupt will change sstatus &c registers,
-    // so don't enable until done with those registers.
     intr_on();
-
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
@@ -76,9 +65,27 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2) {
+    // 时钟中断
+    if(p->alarm_interval > 0) {
+      // 减少报警计数
+      p->alarm_ticks--;
+      
+      if(p->alarm_ticks <= 0 && p->alarm_going_off == 0) {
+        // 保存当前陷阱帧
+        p->alarm_trapframe = (struct trapframe*)kalloc();
+        memmove(p->alarm_trapframe, p->trapframe, sizeof(struct trapframe));
+        
+        // 修改程序计数器指向处理函数
+        p->trapframe->epc = (uint64)p->alarm_handler;
+        
+        // 重置计数和标记
+        p->alarm_ticks = p->alarm_interval;
+        p->alarm_going_off = 1;
+      }
+    }
     yield();
+  }
 
   usertrapret();
 }
