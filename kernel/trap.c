@@ -6,6 +6,8 @@
 #include "proc.h"
 #include "defs.h"
 
+
+pte_t *walk(pagetable_t, uint64, int);
 struct spinlock tickslock;
 uint ticks;
 
@@ -67,6 +69,48 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 13 || r_scause() == 15) {
+    // 页面错误（13=读，15=写）
+    uint64 va = r_stval();
+    
+    // 检查虚拟地址是否有效
+    if(va >= p->sz) {
+      printf("usertrap: invalid va %p beyond process size %p\n", va, p->sz);
+      p->killed = 1;
+    } else {
+      pte_t *pte;
+      // 获取页表项
+      pte = walk(p->pagetable, va, 0);
+      if(pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0) {
+        printf("usertrap: invalid pte for va %p\n", va);
+        p->killed = 1;
+      } else if(*pte & PTE_COW) {
+        // 处理 COW 页面错误
+        uint64 pa = PTE2PA(*pte);
+        
+        // 分配新页面
+        uint64 new_pa = (uint64)kalloc();
+        if(new_pa == 0) {
+          // 内存不足，杀死进程
+          printf("usertrap: kalloc failed for COW page\n");
+          p->killed = 1;
+        } else {
+          // 复制页面内容
+          memmove((void*)new_pa, (void*)pa, PGSIZE);
+          
+          // 更新页表项，设置写权限，清除 COW 标志
+          uint flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
+          *pte = PA2PTE(new_pa) | flags;
+          
+          // 减少旧页面的引用计数（可能会释放它）
+          kfree((void*)pa);
+        }
+      } else {
+        // 不是 COW 页面，但是发生了页面错误
+        printf("usertrap: page fault for non-COW page at va %p\n", va);
+        p->killed = 1;
+      }
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
