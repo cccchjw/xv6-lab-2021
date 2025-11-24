@@ -95,14 +95,39 @@ e1000_init(uint32 *xregs)
 int
 e1000_transmit(struct mbuf *m)
 {
-  //
-  // Your code here.
-  //
-  // the mbuf contains an ethernet frame; program it into
-  // the TX descriptor ring so that the e1000 sends it. Stash
-  // a pointer so that it can be freed after sending.
-  //
+  acquire(&e1000_lock);
   
+  // 获取下一个可用的传输描述符索引
+  uint32 idx = regs[E1000_TDT];
+  
+  // 检查描述符是否可用
+  struct tx_desc *desc = &tx_ring[idx];
+  if(!(desc->status & E1000_TXD_STAT_DD)) {
+    // 描述符还在被硬件使用，传输队列满
+    release(&e1000_lock);
+    return -1;
+  }
+  
+  // 如果之前这个描述符有mbuf，释放它
+  if(tx_mbufs[idx]) {
+    mbuffree(tx_mbufs[idx]);
+    tx_mbufs[idx] = 0;
+  }
+  
+  // 设置描述符
+  desc->addr = (uint64)m->head;
+  desc->length = m->len;
+  
+  // 设置命令标志：EOP (End of Packet), RS (Report Status)
+  desc->cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+  
+  // 保存mbuf指针以便后续释放
+  tx_mbufs[idx] = m;
+  
+  // 更新传输描述符尾指针
+  regs[E1000_TDT] = (idx + 1) % TX_RING_SIZE;
+  
+  release(&e1000_lock);
   return 0;
 }
 
@@ -115,6 +140,48 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
+   acquire(&e1000_lock);
+  
+  // 从E1000_RDT + 1开始检查
+  uint32 idx = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
+  
+  while(1) {
+    struct rx_desc *desc = &rx_ring[idx];
+    
+    // 检查描述符是否就绪
+    if(!(desc->status & E1000_RXD_STAT_DD)) {
+      break;  // 没有更多数据包
+    }
+    
+    // 获取对应的mbuf
+    struct mbuf *m = rx_mbufs[idx];
+    
+    // 更新mbuf长度
+    m->len = desc->length;
+    
+    // 分配新的mbuf替换当前的
+    rx_mbufs[idx] = mbufalloc(0);
+    if(!rx_mbufs[idx]) {
+      panic("e1000: no mbufs available");
+    }
+    
+    // 设置新mbuf到描述符
+    desc->addr = (uint64)rx_mbufs[idx]->head;
+    desc->status = 0;  // 清除状态位
+    
+    // 将接收到的数据包传递给网络栈
+    release(&e1000_lock);  // 在调用net_rx前释放锁，避免死锁
+    net_rx(m);
+    acquire(&e1000_lock);
+    
+    // 更新接收描述符尾指针
+    regs[E1000_RDT] = idx;
+    
+    // 移动到下一个描述符
+    idx = (idx + 1) % RX_RING_SIZE;
+  }
+  
+  release(&e1000_lock);
 }
 
 void
