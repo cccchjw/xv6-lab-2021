@@ -304,11 +304,56 @@ sys_open(void)
       return -1;
     }
   } else {
-    if((ip = namei(path)) == 0){
+    // 符号链接处理开始
+    int depth = 0;
+    const int max_depth = 10;
+    char current_path[MAXPATH];
+    
+    // 使用 xv6 的字符串函数替代 strcpy
+    if(strlen(path) >= MAXPATH) {
       end_op();
       return -1;
     }
-    ilock(ip);
+    memmove(current_path, path, strlen(path) + 1);  // 使用 memmove 替代 strcpy
+    
+    while(1) {
+      if((ip = namei(current_path)) == 0){
+        end_op();
+        return -1;
+      }
+      
+      ilock(ip);
+      
+      // 如果是符号链接且没有设置 O_NOFOLLOW
+      if(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
+        if(depth++ >= max_depth) {
+          // 递归深度过大，可能是循环
+          iunlockput(ip);
+          end_op();
+          return -1;
+        }
+        
+        // 读取符号链接目标
+        if((n = readi(ip, 0, (uint64)current_path, 0, MAXPATH)) < 0) {
+          iunlockput(ip);
+          end_op();
+          return -1;
+        }
+        iunlockput(ip);
+        
+        if(n >= MAXPATH) {
+          end_op();
+          return -1;
+        }
+        current_path[n] = '\0';  // 确保字符串终止
+        continue;  // 继续解析新路径
+      }
+      
+      // 不是符号链接，或者要求不跟随符号链接
+      break;
+    }
+    // 符号链接处理结束
+    
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
@@ -350,6 +395,7 @@ sys_open(void)
 
   return fd;
 }
+
 
 uint64
 sys_mkdir(void)
@@ -482,5 +528,38 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode *ip;
+  
+  // 获取参数
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+  
+  // 开始事务
+  begin_op();
+  
+  // 创建符号链接inode
+  ip = create(path, T_SYMLINK, 0, 0);
+  if(ip == 0){
+    end_op();
+    return -1;
+  }
+  
+  // 将目标路径写入inode的数据块
+  if(writei(ip, 0, (uint64)target, 0, strlen(target)) < 0){
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+  
+  iunlockput(ip);
+  end_op();
   return 0;
 }
