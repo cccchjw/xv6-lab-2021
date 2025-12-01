@@ -1,5 +1,2 @@
-<<<<<<< HEAD
 LAB=syscall
-=======
-LAB=util
->>>>>>> util-lab
+#LAB=util

@@ -26,7 +26,9 @@ int uptime(void);
 int trace(int);
 struct sysinfo;
 int sysinfo(struct sysinfo *);
-
+int getppid(void);
+int clone(uint64 flags, void *stack);
+int execve(const char *path, char *argv[], char *envp[]);
 
 // ulib.c
 int stat(const char*, struct stat*);

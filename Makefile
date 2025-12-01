@@ -196,23 +196,19 @@ UPROGS=\
 	$U/_zombie\
 	$U/_sleep\
 	$U/_pingpong\
-<<<<<<< HEAD
 	$U/_find\
 	$U/_xargs\
 	$U/_primes\
 	$U/_trace\
 	$U/_sysinfotest\
 	$U/_help\
-
-
-=======
-	$U/_primes\
-	$U/_find\
-	$U/_xargs\
+	$U/_mypidtest\
+	$U/_myppidtest\
+	$U/_clonetest\
+	$U/_execvetest\
 
 
 
->>>>>>> util-lab
 ifeq ($(LAB),$(filter $(LAB), pgtbl lock))
 UPROGS += \
 	$U/_stats

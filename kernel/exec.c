@@ -12,9 +12,10 @@ static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uin
 int
 exec(char *path, char **argv)
 {
+
   char *s, *last;
   int i, off;
-  uint64 argc, sz = 0, sp, ustack[MAXARG], stackbase;
+  uint64 argc, sz = 0, sp, ustack[MAXARG], stackbase; 
   struct elfhdr elf;
   struct inode *ip;
   struct proghdr ph;
@@ -126,6 +127,13 @@ exec(char *path, char **argv)
     end_op();
   }
   return -1;
+}
+
+int
+execve(char *path, char **argv, char **envp)
+{
+  // 完全忽略 envp 参数
+  return exec(path, argv);
 }
 
 // Load a program segment into pagetable at virtual address va.

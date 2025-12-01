@@ -106,6 +106,9 @@ extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 extern uint64 sys_trace(void); // here
 extern uint64 sys_sysinfo(void);
+extern uint64 sys_getppid(void);
+extern uint64 sys_clone(void);
+extern uint64 sys_execve(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -131,7 +134,9 @@ static uint64 (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_trace]   sys_trace, 
 [SYS_sysinfo]   sys_sysinfo,
-
+[SYS_getppid]  sys_getppid,
+[SYS_clone]   sys_clone,
+[SYS_execve]   sys_execve,
 };
 
 const char *syscall_names[] = {
@@ -157,7 +162,9 @@ const char *syscall_names[] = {
         [SYS_mkdir]   "mkdir",
         [SYS_close]   "close",
         [SYS_trace]   "trace",
-        [SYS_sysinfo]   "sysinfo"
+        [SYS_sysinfo]   "sysinfo",
+        [SYS_clone]   "clone",
+        [SYS_execve]   "execve",
 
 };
 

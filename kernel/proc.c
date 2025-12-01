@@ -122,6 +122,7 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -167,6 +168,7 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
   p->systrace = 0;
+  
 }
 
 // Create a user page table for a given process,
@@ -725,4 +727,61 @@ nproc(void)
     release(&p->lock);
   }
   return num;
+}
+
+
+
+int
+clone(uint64 flags, void *stack)
+{
+  int i, pid;
+  struct proc *np;
+  struct proc *p = myproc();
+
+  // 分配新进程
+  if((np = allocproc()) == 0){
+    return -1;
+  }
+
+  // 复制父进程页表
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+  np->sz = p->sz;
+
+  // 如果指定了用户栈，使用指定的栈
+  if(stack != 0) {
+    np->trapframe->sp = (uint64)stack;
+  } else {
+    // 否则复制父进程的栈指针
+    np->trapframe->sp = p->trapframe->sp;
+  }
+
+  np->parent = p;
+  
+  // 复制保存的用户寄存器
+  *(np->trapframe) = *(p->trapframe);
+  
+  // 子进程返回0
+  np->trapframe->a0 = 0;
+
+  // 递增文件引用计数
+  for(i = 0; i < NOFILE; i++)
+    if(p->ofile[i])
+      np->ofile[i] = filedup(p->ofile[i]);
+  np->cwd = idup(p->cwd);
+
+  // 设置进程名
+  safestrcpy(np->name, p->name, sizeof(p->name));
+
+  pid = np->pid;
+
+  // 将进程状态设为可运行
+  np->state = RUNNABLE;
+
+  release(&np->lock);
+
+  return pid;
 }

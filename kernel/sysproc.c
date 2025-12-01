@@ -130,3 +130,71 @@ sys_sysinfo(void)
   
   return 0;
 }
+
+uint64
+sys_getppid(void)
+{
+  struct proc *p = myproc();
+  
+  // 检查父进程是否存在且有效
+  if(p->parent && p->parent != p) {
+    return p->parent->pid;
+  }
+  
+  // 如果没有父进程（如init进程），返回1（init的PID）
+  return 1;
+}
+
+uint64
+sys_clone(void)
+{
+  uint64 flags;
+  uint64 stack;
+  
+  if(argaddr(0, &flags) < 0 || argaddr(1, &stack) < 0)
+    return -1;
+    
+  return clone(flags, (void*)stack);
+}
+
+uint64
+sys_execve(void)
+{
+  char path[MAXPATH], *argv[MAXARG];
+  int i;
+  uint64 uargv, uarg;
+  int ret = -1;  // 初始化 ret 为 -1
+
+  if(argstr(0, path, MAXPATH) < 0 || argaddr(1, &uargv) < 0) {
+    return -1;
+  }
+  
+  // 重用 sys_exec 的参数处理逻辑
+  memset(argv, 0, sizeof(argv));
+  for(i=0;; i++){
+    if(i >= NELEM(argv)){
+      goto bad;
+    }
+    if(fetchaddr(uargv+sizeof(uint64)*i, (uint64*)&uarg) < 0){
+      goto bad;
+    }
+    if(uarg == 0){
+      argv[i] = 0;
+      break;
+    }
+    argv[i] = kalloc();
+    if(argv[i] == 0){
+      goto bad;
+    }
+    if(fetchstr(uarg, argv[i], PGSIZE) < 0){
+      goto bad;
+    }
+  }
+
+  ret = exec(path, argv);
+
+ bad:
+  for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)
+    kfree(argv[i]);
+  return ret;
+}

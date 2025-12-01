@@ -22,3 +22,7 @@
 #define SYS_close  21
 #define SYS_trace  22
 #define SYS_sysinfo  23
+#define SYS_getppid  24
+#define SYS_clone 25
+#define SYS_execve 26
+#define SYS_wait4 27 

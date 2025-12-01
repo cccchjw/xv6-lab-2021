@@ -27,6 +27,7 @@ void            consputc(int);
 
 // exec.c
 int             exec(char*, char**);
+int             execve(char*, char**, char**);  
 
 // file.c
 struct file*    filealloc(void);
@@ -111,6 +112,7 @@ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 uint64   cur_proc_cnt(void);
 uint64          nproc(void);
+int             clone(uint64, void*);  
 
 
 // swtch.S
