@@ -41,3 +41,4 @@ entry("trace");
 entry("sysinfo");
 entry("clone");
 entry("execve");
+entry("wait4");

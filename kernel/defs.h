@@ -8,7 +8,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
-
+struct rusage; 
 #include "types.h"
 #include "param.h"
 
@@ -113,6 +113,8 @@ void            procdump(void);
 uint64   cur_proc_cnt(void);
 uint64          nproc(void);
 int             clone(uint64, void*);  
+void            update_maxrss(struct proc*);
+int             wait4(int, int*, int, struct rusage*);
 
 
 // swtch.S

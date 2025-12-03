@@ -67,6 +67,12 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+    // 如果是时钟中断，增加当前进程的用户态时间
+    if(which_dev == 2) {
+      if(p != 0) {
+        p->utime++;
+      }
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -148,6 +154,14 @@ kerneltrap()
     printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
     panic("kerneltrap");
   }
+   // 如果是时钟中断且当前有进程在内核态运行，增加内核态时间
+  if(which_dev == 2) {
+    struct proc *p = myproc();
+    if(p != 0 && p->state == RUNNING) {
+      // 当前在内核模式，增加内核态时间
+      p->stime++;
+    }
+  }
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
@@ -218,3 +232,26 @@ devintr()
   }
 }
 
+void
+update_proc_time(void)
+{
+  struct proc *p = myproc();
+  if(p == 0)
+    return;
+    
+  // 获取当前硬件计数器值
+  uint64 time = r_time();
+  static uint64 last_time = 0;
+  
+  if(last_time == 0) {
+    last_time = time;
+    return;
+  }
+  
+  uint64 elapsed = time - last_time;
+  last_time = time;
+  
+  // 简单分配：一半时间给用户态，一半给内核态
+  p->utime += elapsed / 2;
+  p->stime += elapsed / 2;
+}

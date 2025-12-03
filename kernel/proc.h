@@ -106,4 +106,34 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
   uint64 systrace;             // System call tracing
+  uint64 utime;       // 用户态运行时间（时钟滴答）
+  uint64 stime;       // 内核态运行时间（时钟滴答）
+  uint64 maxrss;      // 最大驻留集大小（页面数）
+  uint64 start_ticks; // 进程开始运行时的 ticks
+};
+
+// wait4 选项常量
+#define WNOHANG     0x00000001  // 如果没有子进程退出，立即返回
+#define WUNTRACED   0x00000002  // 也返回停止的子进程
+#define WCONTINUED  0x00000004  // 也返回继续的子进程
+
+
+// 资源使用统计结构体（内核版本）
+struct rusage {
+  uint64 ru_utime;    // 用户态运行时间
+  uint64 ru_stime;    // 内核态运行时间
+  uint64 ru_maxrss;   // 最大驻留集大小
+  uint64 ru_ixrss;    // 共享内存大小
+  uint64 ru_idrss;    // 非共享数据大小
+  uint64 ru_isrss;    // 非共享栈大小
+  uint64 ru_minflt;   // 缺页次数（不需要I/O）
+  uint64 ru_majflt;   // 缺页次数（需要I/O）
+  uint64 ru_nswap;    // 交换次数
+  uint64 ru_inblock;  // 块输入操作
+  uint64 ru_oublock;  // 块输出操作
+  uint64 ru_msgsnd;   // 发送的消息数
+  uint64 ru_msgrcv;   // 接收的消息数
+  uint64 ru_nsignals; // 接收的信号数
+  uint64 ru_nvcsw;    // 自愿上下文切换
+  uint64 ru_nivcsw;   // 非自愿上下文切换
 };

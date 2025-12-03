@@ -198,3 +198,31 @@ sys_execve(void)
     kfree(argv[i]);
   return ret;
 }
+
+
+uint64
+sys_wait4(void)
+{
+  int pid, options;
+  uint64 status_addr, rusage_addr;
+  
+  // 获取参数
+  if(argint(0, &pid) < 0) {
+    return -1;
+  }
+  
+  if(argaddr(1, &status_addr) < 0) {
+    return -1;
+  }
+  
+  if(argint(2, &options) < 0) {
+    return -1;
+  }
+  
+  if(argaddr(3, &rusage_addr) < 0) {
+    // rusage 是可选的，可以为 0
+    rusage_addr = 0;
+  }
+  
+  return wait4(pid, (int*)status_addr, options, (struct rusage*)rusage_addr);
+}

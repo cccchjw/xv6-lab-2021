@@ -206,6 +206,7 @@ UPROGS=\
 	$U/_myppidtest\
 	$U/_clonetest\
 	$U/_execvetest\
+	$U/_wait4test\
 
 
 
